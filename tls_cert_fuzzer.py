@@ -418,18 +418,24 @@ class CertificateFuzzer:
     def fuzz_certificates(self):
         """Main fuzzing loop"""
         print(f"[*] Starting TLS certificate fuzzing against {self.target_host}:{self.target_port}")
-        print(f"[*] Total payloads: {len(self.format_string_payloads) + len(self.command_injection_payloads) + len(self.encoding_payloads)}")
+        print(f"[*] Total payload types: Format strings: {len(self.format_string_payloads)}, Command injection: {len(self.command_injection_payloads)}, Encoding: {len(self.encoding_payloads)}")
         
         # Test the valid certificate first if available
         if self.base_cert and self.base_key:
+            print("[*] Base certificate and key loaded successfully")
             if not self.test_valid_certificate():
                 print("[!] Warning: Base certificate may not be valid. Continuing anyway...")
+        else:
+            print("[*] No base certificate loaded, will generate certificates for each test")
         
         fields_to_fuzz = ["common_name", "organization", "email", "san"]
+        print(f"[*] Fields to fuzz: {', '.join(fields_to_fuzz)}")
         
         # Test format string payloads
-        print("\n[*] Testing format string payloads...")
-        for payload in self.format_string_payloads:
+        print(f"\n[*] Testing {len(self.format_string_payloads)} format string payloads...")
+        for i, payload in enumerate(self.format_string_payloads):
+            if i == 0:
+                print(f"  [*] Starting format string tests...")
             for field in fields_to_fuzz:
                 self.test_count += 1
                 
@@ -445,7 +451,7 @@ class CertificateFuzzer:
                                                  f"format_string_{field}", payload)
                     self.results.append(result)
                     
-                    if self.verbose:
+                    if self.verbose or self.test_count == 1:
                         print(f"  [{self.test_count}] {field}: {payload[:30]}... - {result['error'] or 'Success'}")
                     
                     # Check for interesting results
@@ -454,7 +460,7 @@ class CertificateFuzzer:
                         print(f"      Error: {result['error']}")
                         
                 except Exception as e:
-                    if self.verbose:
+                    if self.verbose or self.test_count == 1:
                         print(f"  [x] Failed to mutate {field}: {str(e)}")
         
         # Test command injection payloads
@@ -606,10 +612,14 @@ def main():
         fuzzer.generate_report(args.output)
     except KeyboardInterrupt:
         print("\n[!] Fuzzing interrupted by user")
-        fuzzer.generate_report(args.output)
+        if fuzzer.results:  # Only generate report if we have results
+            fuzzer.generate_report(args.output)
     except Exception as e:
         print(f"\n[!] Error during fuzzing: {str(e)}")
-        fuzzer.generate_report(args.output)
+        import traceback
+        traceback.print_exc()
+        if fuzzer.results:  # Only generate report if we have results
+            fuzzer.generate_report(args.output)
 
 
 if __name__ == "__main__":
