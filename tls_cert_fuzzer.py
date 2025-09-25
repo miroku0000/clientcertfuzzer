@@ -166,7 +166,6 @@ class CertificateFuzzer:
                 key_pubkey = self.base_key.public_key()
                 
                 # Serialize both public keys to compare them
-                from cryptography.hazmat.primitives import serialization
                 cert_pub_pem = cert_pubkey.public_bytes(
                     encoding=serialization.Encoding.PEM,
                     format=serialization.PublicFormat.SubjectPublicKeyInfo
