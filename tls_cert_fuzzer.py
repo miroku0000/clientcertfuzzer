@@ -119,22 +119,67 @@ class CertificateFuzzer:
     def load_base_certificate(self):
         """Load the valid client certificate and key to use as base"""
         try:
+            # Load the certificate
             with open(self.client_cert_path, "rb") as f:
-                self.base_cert = x509.load_pem_x509_certificate(f.read(), default_backend())
+                cert_data = f.read()
+                self.base_cert = x509.load_pem_x509_certificate(cert_data, default_backend())
             
+            # Load the private key (handles RSA, EC, ECDSA formats)
             with open(self.client_key_path, "rb") as f:
                 key_data = f.read()
-                try:
-                    self.base_key = serialization.load_pem_private_key(
-                        key_data, password=None, backend=default_backend()
-                    )
-                except TypeError:
-                    # Key might be encrypted, prompt for password
-                    import getpass
-                    password = getpass.getpass("Enter password for client key: ").encode()
-                    self.base_key = serialization.load_pem_private_key(
-                        key_data, password=password, backend=default_backend()
-                    )
+            
+            # Check if it's an ECDSA key format (needs conversion)
+            if b'BEGIN ECDSA PRIVATE KEY' in key_data:
+                # Replace ECDSA headers with EC headers for compatibility
+                key_data = key_data.replace(b'BEGIN ECDSA PRIVATE KEY', b'BEGIN EC PRIVATE KEY')
+                key_data = key_data.replace(b'END ECDSA PRIVATE KEY', b'END EC PRIVATE KEY')
+            
+            # Try to load the private key
+            try:
+                self.base_key = serialization.load_pem_private_key(
+                    key_data, password=None, backend=default_backend()
+                )
+            except TypeError:
+                # Key might be encrypted, prompt for password
+                import getpass
+                password = getpass.getpass("Enter password for client key: ").encode()
+                self.base_key = serialization.load_pem_private_key(
+                    key_data, password=password, backend=default_backend()
+                )
+            except ValueError as e:
+                # If still failing, provide more detailed error
+                if 'Could not deserialize' in str(e):
+                    print(f"[!] Failed to load private key. Detected headers in file:")
+                    if b'BEGIN PRIVATE KEY' in key_data:
+                        print("    - Found: BEGIN PRIVATE KEY")
+                    if b'BEGIN RSA PRIVATE KEY' in key_data:
+                        print("    - Found: BEGIN RSA PRIVATE KEY")
+                    if b'BEGIN EC PRIVATE KEY' in key_data:
+                        print("    - Found: BEGIN EC PRIVATE KEY")
+                    if b'BEGIN ENCRYPTED PRIVATE KEY' in key_data:
+                        print("    - Found: BEGIN ENCRYPTED PRIVATE KEY")
+                raise
+            
+            # Verify the key matches the certificate
+            try:
+                cert_pubkey = self.base_cert.public_key()
+                key_pubkey = self.base_key.public_key()
+                
+                # Serialize both public keys to compare them
+                from cryptography.hazmat.primitives import serialization
+                cert_pub_pem = cert_pubkey.public_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PublicFormat.SubjectPublicKeyInfo
+                )
+                key_pub_pem = key_pubkey.public_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PublicFormat.SubjectPublicKeyInfo
+                )
+                
+                if cert_pub_pem != key_pub_pem:
+                    print("[!] Warning: Private key does not match the certificate!")
+            except:
+                pass  # Skip verification if it fails
             
             print(f"[+] Loaded base certificate: CN={self.base_cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value}")
             
