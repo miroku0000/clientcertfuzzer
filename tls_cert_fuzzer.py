@@ -239,9 +239,9 @@ class CertificateFuzzer:
         """Mutate a specific field in the certificate while preserving other fields"""
         builder = x509.CertificateBuilder()
         
-        # Copy basic fields from original certificate
+        # Copy basic fields from original certificate, but generate new serial number
         builder = builder.public_key(cert.public_key())
-        builder = builder.serial_number(cert.serial_number)
+        builder = builder.serial_number(x509.random_serial_number())
         builder = builder.not_valid_before(cert.not_valid_before)
         builder = builder.not_valid_after(cert.not_valid_after)
         
